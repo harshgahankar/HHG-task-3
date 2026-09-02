@@ -3,10 +3,14 @@
 import tempfile
 from pathlib import Path
 
+import json
+
 import cv2
 import numpy as np
 import streamlit as st
 from face.detector import FaceDetector
+from records.canonical import build_canonical_record
+from records.fingerprint import generate_fingerprint
 from search.lens_search import reverse_image_search, parse_lens_results, SerpApiError
 
 st.set_page_config(page_title="Face Reverse Search", page_icon="🔍")
@@ -33,7 +37,7 @@ if uploaded is not None:
     if len(faces) > 1:
         areas = [(f["bbox"][2] - f["bbox"][0]) * (f["bbox"][3] - f["bbox"][1]) for f in faces]
         idx = int(np.argmax(areas))
-        st.warning(f"Multiple faces detected — using the largest one ({len(faces)} faces found).")
+        st.warning(f"Multiple faces detected -- using the largest one ({len(faces)} faces found).")
     else:
         idx = 0
 
@@ -66,6 +70,7 @@ if uploaded is not None:
             Path(tmp_path).unlink(missing_ok=True)
 
         results = parse_lens_results(raw)
+        st.session_state["results"] = results
 
         if not results:
             st.info(
@@ -88,6 +93,80 @@ if uploaded is not None:
             if len(results) > 1:
                 with st.expander(f"Show {len(results) - 1} more results"):
                     for r in results[1:]:
-                        st.markdown(f"**{r['title']}** — {r['source']}")
+                        st.markdown(f"**{r['title']}** -- {r['source']}")
                         st.markdown(f"[{r['link']}]({r['link']})")
                         st.write("---")
+
+            st.divider()
+            st.subheader("Select Matching Post")
+
+            labels = [f"{r['title']} -- {r['source']}" for r in results]
+            selected_idx = st.radio(
+                "Which result matches your image?",
+                range(len(results)),
+                format_func=lambda i: labels[i],
+                index=0,
+            )
+
+            canonical = build_canonical_record(results[selected_idx])
+            fingerprint = generate_fingerprint(canonical)
+
+            st.session_state["canonical"] = canonical
+            st.session_state["fingerprint"] = fingerprint
+
+            st.markdown("**Canonical Record**")
+            st.code(json.dumps(canonical, indent=2), language="json")
+
+            st.markdown("**Fingerprint (SHA-256)**")
+            st.code(fingerprint)
+
+            st.divider()
+            st.subheader("Anchor to Blockchain")
+
+            if st.button("Anchor to blockchain"):
+                from chain.client import Web3Client
+
+                try:
+                    client = Web3Client()
+                    if not client.is_connected():
+                        st.error(
+                            "Local chain not running. "
+                            "Start it with `npx hardhat node` in the project directory."
+                        )
+                        st.stop()
+
+                    with st.spinner("Anchoring fingerprint to chain..."):
+                        tx = client.anchor_fingerprint(fingerprint)
+
+                    st.session_state["tx_hash"] = tx["tx_hash"]
+                    st.session_state["block_number"] = tx["block_number"]
+
+                    st.success("Fingerprint anchored on-chain!")
+
+                    st.markdown(
+                        f"""
+                        <div style="background:#1e1e1e;padding:16px;border-radius:8px;
+                                    border:1px solid #4CAF50;font-family:monospace;">
+                            <div style="color:#4CAF50;font-weight:bold;margin-bottom:8px;">
+                                Transaction Confirmed
+                            </div>
+                            <div style="color:#ccc;">
+                                <strong>TX Hash:</strong> {tx['tx_hash']}<br>
+                                <strong>Block:</strong> {tx['block_number']}<br>
+                                <strong>From:</strong> {tx['from']}
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    with st.expander("How to verify independently"):
+                        st.markdown(f"""
+                        Check the Hardhat node terminal output, or run:
+                        ```bash
+                        python -c "from chain.client import Web3Client; c=Web3Client(); tx=c.w3.eth.get_transaction('{tx['tx_hash']}'); print('Data:', tx['input'].hex())"
+                        ```
+                        """)
+
+                except Exception as e:
+                    st.error(f"Blockchain anchor failed: {e}")

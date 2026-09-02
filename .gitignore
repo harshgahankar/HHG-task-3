@@ -37,3 +37,7 @@ test_images/
 # Temporary files
 *.tmp
 *.temp
+
+# Node
+node_modules/
+hardhat.log
