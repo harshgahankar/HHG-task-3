@@ -68,7 +68,11 @@ if uploaded is not None:
         results = parse_lens_results(raw)
 
         if not results:
-            st.info("No results found for this image.")
+            st.info(
+                "No visual matches found for this image.\n\n"
+                "**Note:** The SerpApi Free Plan only provides AI Overview data, "
+                "not visual/exact matches. Upgrade to a paid plan for full results."
+            )
         else:
             top = results[0]
             st.subheader("Top Result")

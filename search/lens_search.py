@@ -115,7 +115,12 @@ def reverse_image_search(
             f"Google Lens search failed (HTTP {resp.status_code}): {resp.text}"
         )
 
-    return resp.json()
+    data = resp.json()
+
+    if data.get("error"):
+        raise SerpApiError(f"Google Lens API error: {data['error']}")
+
+    return data
 
 
 def parse_lens_results(raw_json: dict) -> list[dict]:
@@ -128,8 +133,13 @@ def parse_lens_results(raw_json: dict) -> list[dict]:
         {"title": ..., "source": ..., "link": ..., "thumbnail": ...}
 
     Returns an empty list when no matches exist.
+
+    Note: On SerpApi's Free Plan, ``visual_matches`` may not be returned.
+    Only ``ai_overview`` is available on the free tier.
     """
-    # Prefer exact_matches, then visual_matches, then related_content
+    if raw_json.get("error"):
+        return []
+
     for key in ("exact_matches", "visual_matches", "related_content"):
         items = raw_json.get(key)
         if isinstance(items, list) and items:
