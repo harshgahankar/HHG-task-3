@@ -20,6 +20,8 @@ env/
 
 # Environment
 .env
+.env.*
+!.env.example
 
 # OS
 .DS_Store
@@ -41,3 +43,11 @@ test_images/
 # Node
 node_modules/
 hardhat.log
+*.log
+npm-debug.log*
+
+# Generated output
+generated/
+
+# Pytest
+.pytest_cache/
